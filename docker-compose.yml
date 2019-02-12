@@ -1,0 +1,24 @@
+version: '3'
+services:
+  envoyproxy:
+    build:
+      context: .
+      dockerfile: Dockerfile-envoy
+#    command: [ "-c", "/etc/envoy/envoy.yaml", "--service-cluster", "front-proxy", "-l", "debug" ]
+    ports:
+     - "9901:9901"
+     - "10000:10000"
+  service_nginx:
+    image: nginx
+  sigsci-agent-grpc:
+    build: 
+      context: .
+      dockerfile: Dockerfile-sigsci-sidecar
+    environment:
+     - SIGSCI_ACCESSKEYID=SETME
+     - SIGSCI_SECRETACCESSKEY=SETME
+     - SIGSCI_ENVOY_GRPC_ADDRESS=0.0.0.0:8000
+     - SIGSCI_ENVOY_EXPECT_RESPONSE_DATA=1
+#     - SIGSCI_DEBUG_LOG_ALL_THE_THINGS=true
+#     - SIGSCI_DEBUG_LOG_WEB_INPUTS=2
+#     - SIGSCI_DEBUG_LOG_WEB_OUTPUTS=2

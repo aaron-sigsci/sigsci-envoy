@@ -1,0 +1,99 @@
+static_resources:
+  listeners:
+  - name: listener_0
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 10000
+    filter_chains:
+    - filters:
+      - name: envoy.http_connection_manager
+        config:
+          stat_prefix: ingress_http
+          codec_type: AUTO
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: local_service
+              domains:
+              - "*"
+              routes:
+              - match: 
+                  prefix: "/"
+                route:
+                  cluster: service_nginx
+          access_log:
+          - name: envoy.http_grpc_access_log
+            config:
+              common_config:
+                log_name: "sigsci-agent-grpc"
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: sigsci-agent-grpc1
+                  timeout: 0.2s
+              additional_request_headers_to_log:
+              # These are required:
+              - "x-sigsci-request-id"
+              - "x-sigsci-waf-response"
+              # These are additional you want recorded:
+              - "accept"
+              - "content-type"
+              - "content-length"
+              additional_response_headers_to_log:
+              # These are additional you want recorded:
+              - "date"
+              - "server"
+              - "content-type"
+              - "content-length"
+          http_filters:
+          - name: envoy.lua
+            config:
+              inline_code: |
+                -- Add an internal :body header to pass the body if <= 8KB
+                function envoy_on_request(req)
+                  len = 0
+                  cl = req:headers():get("content-length")
+                  if cl ~= nil then
+                    len = tonumber(cl)
+                  end
+                  if len > 0 and len <= 8192 then
+                    reqbody = req:body():getBytes(0, len)
+                    req:headers():add(":body", reqbody)
+                  end
+                end
+          - name: envoy.ext_authz
+            config:
+              grpc_service:
+                envoy_grpc:
+                  cluster_name: sigsci-agent-grpc1
+                timeout: 0.2s
+              failure_mode_allow: true
+          - name: envoy.router
+            config: {}
+
+  clusters:
+  - name: service_nginx
+    connect_timeout: 0.25s
+    type: strict_dns
+    lb_policy: round_robin
+    hosts: 
+    - socket_address:
+        address: service_nginx
+        port_value: 80
+  - name: sigsci-agent-grpc1
+    connect_timeout: 0.2s
+    type: strict_dns
+    lb_policy: round_robin
+    http2_protocol_options: {}
+    #tls_context: {}
+    hosts:
+    - socket_address:
+        address: sigsci-agent-grpc
+        port_value: 8000
+
+admin:
+  access_log_path: /tmp/admin_access.log
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 9901
